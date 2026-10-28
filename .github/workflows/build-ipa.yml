@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       google_drive_file_id:
-        description: Google Drive file ID for the game's NSP or XCI
+        description: Google Drive file ID, or comma-separated file IDs for the base game, updates, and DLC
         required: true
         type: string
       title_id:
@@ -62,7 +62,10 @@ jobs:
           : "${GOOGLE_DRIVE_FILE_ID:?Enter a Google Drive file ID when dispatching the workflow}"
           mkdir -p "$RUNNER_TEMP/game"
           printf '%s' "$GOOGLE_DRIVE_SERVICE_ACCOUNT_B64" | base64 -D > "$RUNNER_TEMP/service-account.json"
-          python - "$RUNNER_TEMP/service-account.json" "$GOOGLE_DRIVE_FILE_ID" "$RUNNER_TEMP/game" "$GOOGLE_DRIVE_TITLE_ID" <<'PY'
+          IFS=',' read -ra FILE_IDS <<< "$GOOGLE_DRIVE_FILE_ID"
+          for file_id in "${FILE_IDS[@]}"; do
+            file_id="${file_id//[[:space:]]/}"
+            python - "$RUNNER_TEMP/service-account.json" "$file_id" "$RUNNER_TEMP/game" "$GOOGLE_DRIVE_TITLE_ID" <<'PY'
           import pathlib
           import re
           import sys
@@ -111,6 +114,7 @@ jobs:
               destination.rename(normalized)
           print(f"Downloaded package: {normalized.name}")
           PY
+          done
           mkdir -p "$RUNNER_TEMP/output"
 
       - name: Build unsigned IPA
