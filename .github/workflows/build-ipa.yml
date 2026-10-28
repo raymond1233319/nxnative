@@ -7,6 +7,10 @@ on:
         description: Google Drive file ID for the game's NSP or XCI
         required: true
         type: string
+      title_id:
+        description: 16-digit base-game title ID, required for an XCI without a title ID in its filename
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -47,19 +51,21 @@ jobs:
         env:
           GOOGLE_DRIVE_SERVICE_ACCOUNT_B64: ${{ secrets.GOOGLE_DRIVE_SERVICE_ACCOUNT_B64 }}
           GOOGLE_DRIVE_FILE_ID: ${{ inputs.google_drive_file_id }}
+          GOOGLE_DRIVE_TITLE_ID: ${{ inputs.title_id }}
         run: |
           : "${GOOGLE_DRIVE_SERVICE_ACCOUNT_B64:?Set the GOOGLE_DRIVE_SERVICE_ACCOUNT_B64 repository secret}"
           : "${GOOGLE_DRIVE_FILE_ID:?Enter a Google Drive file ID when dispatching the workflow}"
           mkdir -p "$RUNNER_TEMP/game"
           printf '%s' "$GOOGLE_DRIVE_SERVICE_ACCOUNT_B64" | base64 -D > "$RUNNER_TEMP/service-account.json"
-          python - "$RUNNER_TEMP/service-account.json" "$GOOGLE_DRIVE_FILE_ID" "$RUNNER_TEMP/game" <<'PY'
+          python - "$RUNNER_TEMP/service-account.json" "$GOOGLE_DRIVE_FILE_ID" "$RUNNER_TEMP/game" "$GOOGLE_DRIVE_TITLE_ID" <<'PY'
           import pathlib
+          import re
           import sys
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
           from googleapiclient.http import MediaIoBaseDownload
 
-          key_path, file_id, output_dir = sys.argv[1:]
+          key_path, file_id, output_dir, title_id = sys.argv[1:]
           credentials = service_account.Credentials.from_service_account_file(
               key_path,
               scopes=["https://www.googleapis.com/auth/drive.readonly"],
@@ -92,6 +98,10 @@ jobs:
                   f"(first bytes: {header[:4].hex()}, bytes at 0x100: {header[0x100:0x104].hex()})"
               )
           normalized = destination.with_suffix(expected)
+          if expected == ".xci" and not re.search(r"\[[0-9A-Fa-f]{16}\]$", normalized.stem):
+              if not re.fullmatch(r"[0-9A-Fa-f]{16}", title_id):
+                  raise SystemExit("XCI filename has no title ID; dispatch again with the 16-digit title_id input")
+              normalized = normalized.with_name(f"{normalized.stem} [{title_id.upper()}]{normalized.suffix}")
           if normalized != destination:
               destination.rename(normalized)
           print(f"Downloaded package: {normalized.name}")
