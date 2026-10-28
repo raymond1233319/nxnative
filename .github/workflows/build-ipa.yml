@@ -79,7 +79,22 @@ jobs:
               done = False
               while not done:
                   _, done = downloader.next_chunk()
-          print(f"Downloaded {destination.name}")
+          with destination.open("rb") as stream:
+              header = stream.read(0x104)
+          suffix = destination.suffix.lower()
+          if header[:4] == b"PFS0":
+              expected = suffix if suffix in {".nsp", ".nsz"} else ".nsp"
+          elif header[0x100:0x104] == b"HEAD":
+              expected = suffix if suffix in {".xci", ".xcz"} else ".xci"
+          else:
+              raise SystemExit(
+                  f"Downloaded file is not an NSP/XCI package: {destination.name} "
+                  f"(first bytes: {header[:4].hex()}, bytes at 0x100: {header[0x100:0x104].hex()})"
+              )
+          normalized = destination.with_suffix(expected)
+          if normalized != destination:
+              destination.rename(normalized)
+          print(f"Downloaded package: {normalized.name}")
           PY
           mkdir -p "$RUNNER_TEMP/output"
 
