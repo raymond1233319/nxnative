@@ -11,6 +11,11 @@ on:
         description: 16-digit base-game title ID, required for an XCI without a title ID in its filename
         required: false
         type: string
+      language:
+        description: Game language code, such as ja, fr, de, zh-Hans, or en-US
+        required: false
+        default: zh-Hant
+        type: string
 
 permissions:
   contents: read
@@ -111,12 +116,15 @@ jobs:
       - name: Build unsigned IPA
         env:
           PROD_KEYS_B64: ${{ secrets.PROD_KEYS_BASE64 }}
+          GAME_LANGUAGE: ${{ inputs.language }}
         run: |
           : "${PROD_KEYS_B64:?Set the PROD_KEYS_BASE64 repository secret}"
           printf '%s' "$PROD_KEYS_B64" | base64 -D > "$RUNNER_TEMP/prod.keys"
-          python scripts/build_ipa_from_nsp.py "$RUNNER_TEMP/game" \
-            -k "$RUNNER_TEMP/prod.keys" \
-            -o "$RUNNER_TEMP/output/game.ipa"
+          args=("$RUNNER_TEMP/game" -k "$RUNNER_TEMP/prod.keys" -o "$RUNNER_TEMP/output/game.ipa")
+          if [[ -n "$GAME_LANGUAGE" ]]; then
+            args+=(--language "$GAME_LANGUAGE")
+          fi
+          python scripts/build_ipa_from_nsp.py "${args[@]}"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
